@@ -1,6 +1,3 @@
-//by @gametocytes
-//by @gametocytes
-//by @gametocytes
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
@@ -275,7 +272,6 @@ static void build_segs() {
 static void* segment_resolve_rva(uint64_t rva) {
     std::lock_guard<std::mutex> lk(g_mtx_segs);
     if (g_segs.empty()) {
-        // unlock not possible with lock_guard; rebuild outside would race — call once at init
         return nullptr;
     }
     void* any = nullptr;
@@ -365,12 +361,10 @@ static void handle_touch() {
         }
         return;
     }
-    // Use first active touch only (finger 0 preference)
     bool down = false;
     for (int i = 0; i < n; i++) {
         struct Touch t = get_touch_fn(i);
         int ph = t.phase;
-        // 0=Began, 1=Moved, 2=Stationary, 3=Ended, 4=Canceled
         if (ph == 0 || ph == 1 || ph == 2) {
             float x = t.px;
             float y = (float)scr_h - t.py;
@@ -634,7 +628,6 @@ static void* lu_mp;
 
 static void* mp(const void* m) {
     if (!m) return nullptr;
-    // Try common MethodInfo::methodPointer slots (0x0 and 0x8)
     uintptr_t p8 = *(uintptr_t*)((uintptr_t)m + 0x8);
     if (ok(p8) && p8 > 0x100000) return (void*)p8;
     uintptr_t p0 = *(uintptr_t*)((uintptr_t)m + 0x0);
@@ -716,7 +709,6 @@ static void tps(void* p){
         sm = s;
         sm_init = true;
     }
-    // Reset lerp if camera jumped too far (respawn / teleport)
     float jdx = s.x - sm.x, jdy = s.y - sm.y, jdz = s.z - sm.z;
     if (jdx*jdx + jdy*jdy + jdz*jdz > 25.f) {
         sm = s;
@@ -760,8 +752,6 @@ static void hk_lu(void* p){
 
 static void hook_lu(){
     if(!lu_mi)return;
-    // MethodInfo::methodPointer — offset 0x0 on many Unity builds, 0x8 on others.
-    // Prefer the value already stored by resolve; fall back to both common slots.
     uintptr_t slot0 = *(uintptr_t*)((uintptr_t)lu_mi + 0x0);
     uintptr_t slot8 = *(uintptr_t*)((uintptr_t)lu_mi + 0x8);
     uintptr_t a = 0;
@@ -769,7 +759,6 @@ static void hook_lu(){
     if (ok(slot8) && slot8 > 0x100000) { a = slot8; ptr_off = 0x8; }
     else if (ok(slot0) && slot0 > 0x100000) { a = slot0; ptr_off = 0x0; }
     if (!a) return;
-    // Don't re-hook if already pointing at us
     if ((void*)a == (void*)hk_lu) {
         lu_mp = lu_mp ? lu_mp : (void*)a;
         return;
@@ -1083,7 +1072,6 @@ static void* thread_main(void*) {
     build_maps();
     g_base = pick_base();
     if (!g_base) return nullptr;
-    // Force segment table build once base is known
     build_segs();
     tps_init();
     try_hook_lu();
@@ -1108,9 +1096,7 @@ static void* thread_main(void*) {
         uint64_t new_base = pick_base();
         if (new_base && new_base != g_base) {
             g_base = new_base;
-            // Rebuild segment map if libunity base moved
             build_segs();
-            // Allow re-init of il2cpp function pointers
             il2cpp::init_api(g_base);
             lu_hooked = false;
             lu_mi = nullptr;
